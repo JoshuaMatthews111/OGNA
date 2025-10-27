@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight, Info, RefreshCw, Bell, Shield, HelpCircle, User, LogOut, Settings, Moon, Sun, Smartphone, Camera } from 'lucide-react-native';
 import { useOnboardingStore } from '@/store/onboardingStore';
@@ -8,11 +8,13 @@ import { useTheme, ThemeMode } from '@/store/themeStore';
 import { router } from 'expo-router';
 import { churchInfo } from '@/constants/onboarding';
 import Logo from '@/components/Logo';
+import { chooseImageSource, uploadImageToServer } from '@/lib/imageUpload';
 
 export default function ProfileScreen() {
   const { resetOnboarding } = useOnboardingStore();
   const { user, logout, updateUserPhoto } = useAuthStore();
   const { colors, themeMode, setThemeMode, isDark } = useTheme();
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const handleResetOnboarding = () => {
     Alert.alert(
@@ -125,14 +127,29 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleChoosePhoto = () => {
-    Alert.alert(
-      'Profile Photo',
-      'Photo upload will be available in a future update',
-      [
-        { text: 'OK', style: 'default' },
-      ]
-    );
+  const handleChoosePhoto = async () => {
+    if (isUploadingPhoto) return;
+    
+    try {
+      setIsUploadingPhoto(true);
+      const result = await chooseImageSource({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result) {
+        // Upload to server (or use local URI for now)
+        const photoUri = await uploadImageToServer(result.uri);
+        updateUserPhoto(photoUri);
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating photo:', error);
+      Alert.alert('Error', 'Failed to update profile photo. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   return (
@@ -149,15 +166,20 @@ export default function ProfileScreen() {
               <TouchableOpacity 
                 style={[styles.avatarContainer, { backgroundColor: colors.accentLight }]}
                 onPress={handleChoosePhoto}
+                disabled={isUploadingPhoto}
               >
-                {user?.photoUri ? (
+                {isUploadingPhoto ? (
+                  <ActivityIndicator size="large" color={colors.accent} />
+                ) : user?.photoUri ? (
                   <Image source={{ uri: user.photoUri }} style={styles.avatarImageLarge} />
                 ) : (
                   <User size={32} color={colors.accent} />
                 )}
-                <View style={[styles.cameraButton, { backgroundColor: colors.accent }]}>
-                  <Camera size={14} color="#FFF" />
-                </View>
+                {!isUploadingPhoto && (
+                  <View style={[styles.cameraButton, { backgroundColor: colors.accent }]}>
+                    <Camera size={14} color="#FFF" />
+                  </View>
+                )}
               </TouchableOpacity>
               <View style={styles.profileInfo}>
                 <Text style={[styles.profileName, { color: colors.text }]}>{user?.name || 'Guest User'}</Text>
